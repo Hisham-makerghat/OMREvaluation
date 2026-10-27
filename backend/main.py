@@ -1,99 +1,51 @@
+"""Command line use without the web app: evaluate a folder of scans with an answer key.
+
+    python main.py --input scans/ --key ABCDBACED... --out results.csv
+
+The key is one letter per question in order. Images (JPG, PNG) and PDFs (every page) are read.
 """
-
- OMRChecker
-
- Author: Udayraj Deshmukh
- Github: https://github.com/Udayraj123
-
-"""
-
 import argparse
+import csv
+import os
 import sys
 from pathlib import Path
 
-from src.entry import entry_point
-from src.logger import logger
+BACKEND_DIR = Path(__file__).resolve().parent
+os.chdir(BACKEND_DIR)
+sys.path.insert(0, str(BACKEND_DIR))
+
+from omr import Engine, load_pages  # noqa: E402
 
 
-def parse_args():
-    # construct the argument parse and parse the arguments
-    argparser = argparse.ArgumentParser()
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--input", "-i", required=True, help="folder of PDF/JPG/PNG scans")
+    ap.add_argument("--key", "-k", required=True, help="answer key, one letter per question, e.g. ABCDA...")
+    ap.add_argument("--out", "-o", default="results.csv")
+    ap.add_argument("--checked-dir", help="also save the checked pictures here")
+    args = ap.parse_args()
 
-    argparser.add_argument(
-        "-i",
-        "--inputDir",
-        default=["inputs"],
-        # https://docs.python.org/3/library/argparse.html#nargs
-        nargs="*",
-        required=False,
-        type=str,
-        dest="input_paths",
-        help="Specify an input directory.",
-    )
+    engine = Engine(BACKEND_DIR / "template.json")
+    key = {f"q{i + 1}": ch for i, ch in enumerate(args.key.strip().upper())}
+    qlabels = list(key)
+    files = sorted(p for p in Path(args.input).iterdir() if p.suffix.lower() in (".pdf", ".jpg", ".jpeg", ".png"))
+    if args.checked_dir:
+        Path(args.checked_dir).mkdir(parents=True, exist_ok=True)
 
-    argparser.add_argument(
-        "-d",
-        "--debug",
-        required=False,
-        dest="debug",
-        action="store_false",
-        help="Enables debugging mode for showing detailed errors",
-    )
-
-    argparser.add_argument(
-        "-o",
-        "--outputDir",
-        default="outputs",
-        required=False,
-        dest="output_dir",
-        help="Specify an output directory.",
-    )
-
-    argparser.add_argument(
-        "-a",
-        "--autoAlign",
-        required=False,
-        dest="autoAlign",
-        action="store_true",
-        help="(experimental) Enables automatic template alignment - \
-        use if the scans show slight misalignments.",
-    )
-
-    argparser.add_argument(
-        "-l",
-        "--setLayout",
-        required=False,
-        dest="setLayout",
-        action="store_true",
-        help="Set up OMR template layout - modify your json file and \
-        run again until the template is set.",
-    )
-
-    (
-        args,
-        unknown,
-    ) = argparser.parse_known_args()
-
-    args = vars(args)
-
-    if len(unknown) > 0:
-        logger.warning(f"\nError: Unknown arguments: {unknown}", unknown)
-        argparser.print_help()
-        exit(11)
-    return args
-
-
-def entry_point_for_args(args):
-    if args["debug"] is True:
-        # Disable tracebacks
-        sys.tracebacklimit = 0
-    for root in args["input_paths"]:
-        entry_point(
-            Path(root),
-            args,
-        )
+    with open(args.out, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["file", "page", "status", "needs_review", "reason", "score"] + engine.field_labels + qlabels)
+        for f in files:
+            for i, page in enumerate(load_pages(f.read_bytes(), f.name), start=1):
+                r = engine.evaluate(page, key, name=f"{f.stem}-{i}")
+                w.writerow([f.name, i, "ok" if r.ok else "error", "yes" if r.needs_review else "",
+                            r.error_reason or r.review_reason, "" if r.score is None else r.score]
+                           + [r.fields.get(k, "") for k in engine.field_labels] + [r.answers.get(k, "") for k in qlabels])
+                print(f"{f.name} p{i}: {'score ' + str(r.score) if r.ok else r.error_reason}")
+                if args.checked_dir and r.checked_image_jpeg:
+                    (Path(args.checked_dir) / f"{f.stem}-p{i}.jpg").write_bytes(r.checked_image_jpeg)
+    print(f"wrote {args.out}")
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    entry_point_for_args(args)
+    main()
