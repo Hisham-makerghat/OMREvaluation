@@ -42,10 +42,12 @@ jobs:
           include-hidden-files: false
 
   deploy:
-    # Deploys to Azure App Service on every push to main. Needs the repository secret
-    # AZURE_WEBAPP_PUBLISH_PROFILE and the variable AZURE_WEBAPP_NAME (see docs/AZURE_SETUP.md).
+    # Deploys to Azure App Service on every push to main, and when the workflow is run by hand
+    # on main (Actions > Test and deploy > Run workflow) to redeploy without a new commit.
+    # Needs the repository secret AZURE_WEBAPP_PUBLISH_PROFILE and the variable AZURE_WEBAPP_NAME
+    # (see docs/AZURE_SETUP.md).
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AZURE_WEBAPP_NAME != ''
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && vars.AZURE_WEBAPP_NAME != ''
     runs-on: ubuntu-latest
     environment: production
     steps:

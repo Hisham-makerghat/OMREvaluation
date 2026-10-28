@@ -120,8 +120,10 @@ in; everyone else waits for approval on the Users page.
 2. In the GitHub repository: **Settings > Secrets and variables > Actions**.
    Add the secret `AZURE_WEBAPP_PUBLISH_PROFILE` with the file's contents, and the
    variable `AZURE_WEBAPP_NAME` with the web app name (`omr-makerghat`).
-3. Push to `main`, or run the **Test and deploy** workflow by hand. It runs the tests, builds
-   the React page into `backend/static_site`, and deploys the `backend` folder.
+3. Push to `main`, or run the **Test and deploy** workflow by hand on `main` (Actions > Test and
+   deploy > Run workflow). It runs the tests, builds the React page into `backend/static_site`,
+   and deploys the `backend` folder. The variable must exist before the run starts; a run from
+   before it was added skips the deploy job.
 
 Open `https://omr-makerghat.azurewebsites.net`, sign up with the admin email, and you are in.
 
