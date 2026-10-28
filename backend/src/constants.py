@@ -9,10 +9,7 @@
 from dotmap import DotMap
 
 # Filenames
-DATA_DIR = "/app/evaluation_config"
 TEMPLATE_FILENAME = "template.json"
-EVALUATION_FILENAME = "evaluation.json"
-CONFIG_FILENAME = "config.json"
 
 FIELD_LABEL_NUMBER_REGEX = r"([^\d]+)(\d*)"
 #

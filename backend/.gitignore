@@ -1,14 +1,16 @@
 # Any directory starting with a dot
 **/\.*/
-# Except .github
 !.github/
 
-# Everything in inputs/ and outputs/
+# Local data, built page, old folders
+data/
+static_site/
 inputs/*
 outputs/*
+.venv/
+venv/
 
 # Misc
 **/.DS_Store
 **/__pycache__
-venv/
 OMRChecker.wiki/
