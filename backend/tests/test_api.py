@@ -140,3 +140,24 @@ def test_delete_batch_removes_rows_and_files(client, app):
     assert client.get(f"/api/batches/{b['id']}", headers=ADMIN).status_code == 404
     assert not any(root.rglob("checked.jpg"))
     assert client.get(f"/api/sheets/{s['id']}/image", headers=ADMIN).status_code == 404
+
+
+def test_table_creation_survives_a_concurrent_start(tmp_path):
+    """Two workers booting on a fresh database must not crash on 'table already exists'."""
+    import threading
+    from sqlalchemy import create_engine
+    from server.models import create_tables
+
+    url = f"sqlite:///{tmp_path / 'race.db'}"
+    errors = []
+
+    def boot():
+        try:
+            create_tables(create_engine(url))
+        except Exception as exc:  # pragma: no cover - the assertion below reports it
+            errors.append(exc)
+
+    threads = [threading.Thread(target=boot) for _ in range(6)]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    assert errors == []

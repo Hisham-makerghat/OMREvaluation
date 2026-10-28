@@ -141,5 +141,21 @@ def make_session_factory(database_url: str):
         @event.listens_for(engine, "connect")
         def _sqlite_pragmas(dbapi_conn, _):
             dbapi_conn.execute("PRAGMA foreign_keys=ON")
-    Base.metadata.create_all(engine)
+    create_tables(engine)
     return engine, scoped_session(sessionmaker(bind=engine, expire_on_commit=False))
+
+
+def create_tables(engine, attempts: int = 5) -> None:
+    """Create missing tables. Several Gunicorn workers start at once on a fresh database, so two of
+    them can race between 'does the table exist?' and 'create it'; the loser just retries."""
+    import time
+    from sqlalchemy.exc import OperationalError, ProgrammingError
+
+    for attempt in range(attempts):
+        try:
+            Base.metadata.create_all(engine)
+            return
+        except (OperationalError, ProgrammingError) as exc:
+            if "already exists" not in str(exc).lower() or attempt == attempts - 1:
+                raise
+            time.sleep(0.3 * (attempt + 1))
