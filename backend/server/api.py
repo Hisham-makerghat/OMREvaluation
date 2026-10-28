@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 from flask import Blueprint, Response, abort, current_app, g, jsonify, request
 from sqlalchemy.exc import OperationalError
+from werkzeug.exceptions import HTTPException
 
 from omr import load_pages
 from .auth import require_admin, require_user
@@ -107,7 +108,8 @@ def _validate_test(body, question_count_max):
 def list_tests():
     q = db().query(Test)
     if request.args.get("include_archived") != "1":
-        q = q.filter(Test.archived.is_(False))
+        # "== False" compiles to "= 0" everywhere; ".is_(False)" gives "IS 0", which SQL Server rejects.
+        q = q.filter(Test.archived == False)  # noqa: E712
     return jsonify([t.to_dict() for t in q.order_by(Test.created_at.desc()).all()])
 
 
@@ -317,3 +319,12 @@ def _json_error(err):
 def _db_error(err):
     current_app.logger.exception("database error")
     return jsonify({"error": "the database is starting up or unavailable, please try again in a minute"}), 503
+
+
+@api.errorhandler(Exception)
+def _unexpected_error(err):
+    """Anything else: log the traceback and tell the page what went wrong, instead of a bare HTML 500."""
+    if isinstance(err, HTTPException):
+        return err
+    current_app.logger.exception("unhandled error in %s", request.path)
+    return jsonify({"error": f"unexpected error: {type(err).__name__}: {err}"[:500]}), 500
