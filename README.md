@@ -22,7 +22,10 @@ a React page (`frontend`).
 
 ## Run it on a laptop
 
-Needs Python 3.11 and Node 20.
+Quickest: with a copy that already contains `frontend/build`, double-click `run_local.bat` (Windows)
+or run `./run_local.sh` (Mac/Linux). It needs only Python 3.11 or newer.
+
+From a plain checkout you also build the page first, which needs Node 20:
 
 ```bash
 cd frontend && npm ci && npm run build && cd ..
