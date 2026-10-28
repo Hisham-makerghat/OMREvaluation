@@ -41,9 +41,11 @@ export function fmtScore(n: number | null | undefined): string {
   return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
 }
 
-/** The name we show for a signed-in person: their name, else the part of the email before @. */
+/** The name we show for a person: their name, else the part of the email before @ with a capital letter.
+ *  "unknown" is what the sign-in sends when it knows no name, so it counts as none. */
 export function displayName(u: Pick<User, 'name' | 'email'>): string {
-  return (u.name || '').trim() || u.email.split('@')[0];
+  const name = (u.name || '').trim();
+  return name && name.toLowerCase() !== 'unknown' ? name : capitalise(u.email.split('@')[0]);
 }
 
 /** One capital letter for the round avatar. */

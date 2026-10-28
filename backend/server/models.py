@@ -27,6 +27,16 @@ def iso(dt: Optional[datetime]) -> Optional[str]:
     return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).isoformat()
 
 
+# What a sign-in service sends as the name when it knows none (Entra External ID's email sign-up does).
+PLACEHOLDER_NAMES = {"unknown"}
+
+
+def real_name(value: Optional[str]) -> str:
+    """The person's name, or "" when the sign-in gave none or only a placeholder like "unknown"."""
+    name = (value or "").strip()
+    return "" if name.lower() in PLACEHOLDER_NAMES else name
+
+
 def new_id() -> str:
     return uuid.uuid4().hex
 
@@ -46,7 +56,7 @@ class User(Base):
     approved_by: Mapped[Optional[str]] = mapped_column(String(320), nullable=True)
 
     def to_dict(self) -> dict:
-        return {"id": self.id, "email": self.email, "name": self.name, "role": self.role,
+        return {"id": self.id, "email": self.email, "name": real_name(self.name), "role": self.role,
                 "status": self.status, "created_at": iso(self.created_at),
                 "approved_by": self.approved_by}
 

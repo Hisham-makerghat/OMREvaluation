@@ -1,7 +1,7 @@
 import csv
 import io
 
-from .conftest import ADMIN, FIXTURES, TEACHER, key_dict
+from .conftest import ADMIN, FIXTURES, TEACHER, key_dict, principal_header
 
 
 def make_test(client, headers=ADMIN, **over):
@@ -48,6 +48,19 @@ def test_new_user_waits_for_approval_then_admin_approves(client):
     assert client.get("/api/tests", headers=TEACHER).status_code == 200
     # teachers cannot manage users
     assert client.get("/api/users", headers=TEACHER).status_code == 403
+
+
+def test_a_placeholder_name_from_sign_in_is_not_shown(client):
+    from server.models import User
+
+    # Entra External ID sends "unknown" when the sign-up asked for no name.
+    me = client.get("/api/me", headers=principal_header("new.teacher@example.org", "unknown")).get_json()
+    assert me["user"]["name"] == ""
+    # A real name sent at a later sign-in is kept.
+    me = client.get("/api/me", headers=principal_header("new.teacher@example.org", "Priya Sharma")).get_json()
+    assert me["user"]["name"] == "Priya Sharma"
+    # People saved before this change with the placeholder show no name either.
+    assert User(email="old@example.org", name="Unknown").to_dict()["name"] == ""
 
 
 def test_answer_key_validation(client):

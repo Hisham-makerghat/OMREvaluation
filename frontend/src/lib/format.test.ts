@@ -33,7 +33,8 @@ test('numbers and words', () => {
 });
 
 test('people', () => {
-  expect(displayName({ name: '', email: 'priya.teacher@gmail.com' })).toBe('priya.teacher');
+  expect(displayName({ name: '', email: 'priya.teacher@gmail.com' })).toBe('Priya.teacher');
+  expect(displayName({ name: 'unknown', email: 'hisham@makerghat.org' })).toBe('Hisham');
   expect(displayName({ name: 'Hisham', email: 'hisham@makerghat.org' })).toBe('Hisham');
   expect(initialOf({ name: '', email: 'priya@x.org' })).toBe('P');
   expect(whoDid('a@x.org', { email: 'a@x.org' })).toBe('you');

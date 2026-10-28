@@ -9,7 +9,7 @@ from functools import wraps
 
 from flask import abort, g, request
 
-from .models import User
+from .models import User, real_name
 
 EMAIL_CLAIMS = ("emails", "email", "preferred_username", "upn",
                 "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
@@ -31,7 +31,7 @@ def identity_from_request(settings):
         email = next((claims[k] for k in EMAIL_CLAIMS if claims.get(k) and "@" in str(claims[k])), None)
         if not email:
             abort(401, "sign-in did not include an email address")
-        name = next((claims[k] for k in NAME_CLAIMS if claims.get(k)), "") or ""
+        name = real_name(next((claims[k] for k in NAME_CLAIMS if claims.get(k)), ""))
         return email.strip().lower(), name
     if settings.DEV_USER_EMAIL:
         return settings.DEV_USER_EMAIL, "Local developer"
@@ -49,8 +49,16 @@ def load_current_user(db, settings) -> User | None:
                     status="approved" if is_admin else "pending", approved_by="ADMIN_EMAILS setting" if is_admin else None)
         db.add(user)
         db.commit()
-    elif email in settings.ADMIN_EMAILS and (user.role != "admin" or user.status != "approved"):
+        return user
+    changed = False
+    if name and not real_name(user.name):
+        # Signed up while the sign-in sent no name (or the placeholder "unknown"): keep the real one now.
+        user.name = name
+        changed = True
+    if email in settings.ADMIN_EMAILS and (user.role != "admin" or user.status != "approved"):
         user.role, user.status = "admin", "approved"
+        changed = True
+    if changed:
         db.commit()
     return user
 
