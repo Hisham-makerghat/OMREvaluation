@@ -103,7 +103,7 @@ az storage account management-policy create --account-name $STORAGE --resource-g
 
 ```bash
 az webapp config appsettings set --name $APP --resource-group $RG --settings \
-  DATABASE_URL="mssql+pyodbc://@$SQLSERVER.database.windows.net:1433/omr?driver=ODBC+Driver+18+for+SQL+Server&Authentication=ActiveDirectoryMsi&Encrypt=yes" \
+  DATABASE_URL="mssql+pyodbc://@$SQLSERVER.database.windows.net:1433/omr?driver=ODBC+Driver+18+for+SQL+Server&authentication=ActiveDirectoryMsi&Encrypt=yes" \
   AZURE_STORAGE_ACCOUNT_URL="https://$STORAGE.blob.core.windows.net" \
   AZURE_STORAGE_CONTAINER="omr-sheets" \
   ADMIN_EMAILS="hisham@makerghat.org" \
@@ -113,6 +113,10 @@ az webapp config appsettings set --name $APP --resource-group $RG --settings \
 
 `ADMIN_EMAILS` is a comma-separated list. Those addresses are admins the moment they sign
 in; everyone else waits for approval on the Users page.
+
+`authentication` in `DATABASE_URL` must be lowercase: SQLAlchemy only recognises it that way.
+With a capital A it adds `Trusted_Connection=Yes` as well, and the driver refuses to start with
+"Cannot use Authentication option with Integrated Security option".
 
 ## 6. Deploy from GitHub
 
