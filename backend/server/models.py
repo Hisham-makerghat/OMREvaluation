@@ -151,11 +151,16 @@ def create_tables(engine, attempts: int = 5) -> None:
     import time
     from sqlalchemy.exc import OperationalError, ProgrammingError
 
+    # SQLite and PostgreSQL say "table X already exists"; SQL Server says
+    # "There is already an object named 'X' in the database".
+    already_there = ("already exists", "already an object named")
+
     for attempt in range(attempts):
         try:
             Base.metadata.create_all(engine)
             return
         except (OperationalError, ProgrammingError) as exc:
-            if "already exists" not in str(exc).lower() or attempt == attempts - 1:
+            message = str(exc).lower()
+            if not any(phrase in message for phrase in already_there) or attempt == attempts - 1:
                 raise
             time.sleep(0.3 * (attempt + 1))
