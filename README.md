@@ -34,6 +34,7 @@ DEV_USER_EMAIL=you@example.org ADMIN_EMAILS=you@example.org flask --app app run 
 
 Open http://127.0.0.1:8000. Data goes to `backend/data` (a SQLite database and the sheet
 images). `DEV_USER_EMAIL` stands in for the sign-in that Azure provides in production.
+Sample scans to try, with their answer key, are in [`samples/`](samples/README.md).
 
 For frontend development with live reload: `cd frontend && npm start` (it proxies `/api` to
 port 8000).
