@@ -26,6 +26,10 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
         working-directory: frontend
+      - run: npm test -- --watchAll=false
+        working-directory: frontend
+        env:
+          CI: "true"
       - run: npm run build
         working-directory: frontend
         env:
@@ -34,6 +38,10 @@ jobs:
         run: |
           rm -rf backend/static_site
           cp -r frontend/build backend/static_site
+          # A gzipped copy next to each text file of the page, for app.py to send: App Service does not
+          # compress. -k keeps the original for browsers that do not take gzip. -n leaves out the file's
+          # name and time, so a file that did not change gives the same bytes and keeps its ETag.
+          find backend/static_site -type f \( -name '*.js' -o -name '*.css' -o -name '*.html' -o -name '*.json' -o -name '*.svg' -o -name '*.txt' \) -exec gzip -9 -n -k {} +
           rm -rf backend/.venv backend/data backend/tests
       - uses: actions/upload-artifact@v4
         with:

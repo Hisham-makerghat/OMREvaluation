@@ -1,123 +1,217 @@
-import { useEffect, useState } from 'react';
-import AnswerInput from '../components/AnswerInput';
-import { api, fmtDate, Me, Test } from '../lib/api';
+// "Answer keys": the right answers for each test. Every key is a card; tapping one opens the editor
+// in its place. Only one editor is open at a time, and unsaved changes are never dropped without asking.
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { IconPencil, IconPlus, IconRefresh } from '../components/Icons';
+import { problemFromError } from '../components/keys/answerKey';
+import KeyEditor, { LEAVE_MESSAGE } from '../components/keys/KeyEditor';
+import { KeyUse, Usage, usageFrom, usageOf, usedByText } from '../components/keys/usage';
+import { EmptyState, Loading, Notice } from '../components/ui';
+import { api, Batch, Me, Test } from '../lib/api';
+import { friendlyDate, plural, whoDid } from '../lib/format';
 
-const blank = (qn: number): Partial<Test> => ({ name: '', question_count: qn, options: 'ABCDE', marks_correct: 1, marks_incorrect: 0, marks_unmarked: 0, answer_key: {} });
+/** openId while a new key is being written. */
+const NEW = 'new';
+const NEW_BUTTON_ID = 'new-key-button';
+const TITLE_ID = 'keys-title';
+const cardId = (testId: string) => `key-${testId}`;
+
+/** "made by you on 28 Oct", "made by asha today 4:40 pm". */
+function madeText(t: Test, me: Me): string {
+  const who = whoDid(t.created_by, me.user);
+  const when = friendlyDate(t.created_at);
+  if (!when) return `made by ${who}`;
+  return /^(today|yesterday)\b/.test(when) ? `made by ${who} ${when}` : `made by ${who} on ${when}`;
+}
+
+/** "50 questions · used by 3 batches · made by you on 28 Oct". */
+function keyMeta(t: Test, use: KeyUse | undefined, me: Me): string {
+  const parts = [plural(t.question_count, 'question')];
+  const used = use ? usedByText(use) : '';
+  if (used) parts.push(used);
+  parts.push(madeText(t, me));
+  return parts.join(' · ');
+}
+
+function KeyCard({ test, meta, onOpen }: { test: Test; meta: string; onOpen: () => void }) {
+  const metaId = `${cardId(test.id)}-meta`;
+  return (
+    <button id={cardId(test.id)} type="button" onClick={onOpen} aria-label={`Edit ${test.name}`} aria-describedby={metaId}
+      className="flex min-h-[72px] w-full items-center gap-3.5 rounded-2xl border border-line bg-white px-5 py-4 text-left transition-colors hover:border-brand">
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="font-display text-[19px] font-semibold leading-7 text-heading [overflow-wrap:anywhere]">{test.name}</span>
+        <span id={metaId} className="text-[15px] leading-[22px] text-muted [overflow-wrap:anywhere]">{meta}</span>
+      </span>
+      <span className="inline-flex shrink-0 items-center gap-1.5 text-[15px] font-semibold text-brand">
+        <IconPencil size={20} />
+        Edit
+      </span>
+    </button>
+  );
+}
 
 export default function TestsPage({ me }: { me: Me }) {
-  const [tests, setTests] = useState<Test[]>([]);
-  const [editing, setEditing] = useState<Partial<Test> | null>(null);
-  const [msg, setMsg] = useState('');
-  const maxQ = me.sheet.question_count;
+  const maxQuestions = me.sheet.question_count || 50;
+  const [tests, setTests] = useState<Test[] | null>(null);
+  // Batches per key; null until loaded (or when they could not be loaded: the keys still show).
+  const [usage, setUsage] = useState<Usage | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [loadRound, setLoadRound] = useState(0);
+  // The key whose editor is open, NEW for a new key, or null.
+  const [openId, setOpenId] = useState<string | null>(null);
+  // Whether the open editor has unsaved changes, and whether it is saving or archiving.
+  // Refs: they are only read when someone clicks.
+  const dirtyRef = useRef(false);
+  const busyRef = useRef(false);
+  // The element to focus once it is on screen, so keyboard users are not left on a removed button.
+  const focusNext = useRef<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const askedForNew = searchParams.get('new') === '1';
 
-  const load = () => api.get<Test[]>('/api/tests').then(setTests).catch(e => setMsg(e.message));
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    api.get<Test[]>('/api/tests')
+      .then(list => {
+        if (cancelled) return;
+        setTests(list);
+        setLoadError('');
+      })
+      .catch(e => { if (!cancelled) setLoadError(problemFromError(e, 'load the answer keys')); });
+    // Only for "used by 3 batches".
+    api.get<Batch[]>('/api/batches')
+      .then(list => { if (!cancelled) setUsage(usageFrom(list)); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [loadRound]);
 
-  const save = async () => {
-    if (!editing) return;
-    setMsg('');
-    try {
-      if (editing.id) await api.put(`/api/tests/${editing.id}`, editing);
-      else await api.post('/api/tests', editing);
-      setEditing(null);
-      load();
-    } catch (e: any) { setMsg(e.message); }
-  };
+  // The Check sheets page links to /tests?new=1 when there are no keys: open a new key straight
+  // away, then take the parameter off the address so a reload does not open another.
+  useEffect(() => {
+    if (!askedForNew) return;
+    setOpenId(NEW);
+    setSearchParams(params => {
+      const next = new URLSearchParams(params);
+      next.delete('new');
+      return next;
+    }, { replace: true });
+  }, [askedForNew, setSearchParams]);
 
-  const archive = async (t: Test) => {
-    if (!window.confirm(`Archive "${t.name}"? Past results are kept.`)) return;
-    await api.put(`/api/tests/${t.id}`, { ...t, archived: true });
-    load();
-  };
+  useEffect(() => {
+    const target = focusNext.current;
+    if (!target) return;
+    const el = document.getElementById(target);
+    if (el) {
+      focusNext.current = null;
+      el.focus();
+    }
+  });
 
-  const setAnswer = (opt: string, idx: number) =>
-    setEditing(e => e && ({ ...e, answer_key: { ...e.answer_key, [`q${idx}`]: opt } }));
+  const reload = () => setLoadRound(r => r + 1);
+  const setDirty = useCallback((dirty: boolean) => { dirtyRef.current = dirty; }, []);
+  const setBusy = useCallback((busy: boolean) => { busyRef.current = busy; }, []);
+  const usageFor = (t: Test) => (usage ? usageOf(t, usage) : undefined);
 
-  const filled = editing ? Object.values(editing.answer_key || {}).filter(Boolean).length : 0;
-  const qn = editing?.question_count || maxQ;
+  function openEditor(id: string) {
+    // While a key is being saved or archived, its editor stays: it closes by itself when that is done.
+    if (openId === id || busyRef.current) return;
+    if (dirtyRef.current && !window.confirm(LEAVE_MESSAGE)) return;
+    dirtyRef.current = false;
+    setOpenId(id);
+  }
+
+  function closeEditor(focusId: string) {
+    dirtyRef.current = false;
+    busyRef.current = false;
+    setOpenId(null);
+    focusNext.current = focusId;
+  }
+
+  function tryAgain() {
+    // The message goes, and the focused button with it: keep the keyboard on the page, at its heading.
+    focusNext.current = TITLE_ID;
+    setLoadError('');
+    reload();
+  }
+
+  function handleSaved(saved: Test) {
+    // Show the saved key at once; the reload below brings in anything else that changed.
+    setTests(list => {
+      if (!list) return [saved];
+      return list.some(t => t.id === saved.id) ? list.map(t => (t.id === saved.id ? saved : t)) : [saved, ...list];
+    });
+    closeEditor(cardId(saved.id));
+    reload();
+  }
+
+  function handleArchived(testId: string) {
+    setTests(list => list && list.filter(t => t.id !== testId));
+    closeEditor(NEW_BUTTON_ID);
+    reload();
+  }
+
+  const editorFor = (test: Test | null) => (
+    <KeyEditor test={test} maxQuestions={maxQuestions}
+      usedBy={test ? usageFor(test) : undefined}
+      onDirtyChange={setDirty}
+      onBusyChange={setBusy}
+      onCancel={() => closeEditor(test ? cardId(test.id) : NEW_BUTTON_ID)}
+      onSaved={handleSaved}
+      onArchived={() => { if (test) handleArchived(test.id); }} />
+  );
+
+  const writingNew = openId === NEW;
+  const hasKeys = tests !== null && tests.length > 0;
 
   return (
-    <div className="text-left">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Answer keys</h1>
-        {!editing && <button className="btn-primary" onClick={() => setEditing(blank(maxQ))}>New answer key</button>}
-      </div>
-      {msg && <div className="mb-4 p-3 rounded bg-red-100 text-red-800">{msg}</div>}
-
-      {editing ? (
-        <div className="bg-white border rounded-lg shadow p-6">
-          <div className="grid gap-4 md:grid-cols-4 mb-6">
-            <label className="block md:col-span-2">
-              <span className="text-sm font-semibold">Test name</span>
-              <input className="input" value={editing.name || ''} placeholder="e.g. Endline Oct 2026, Class 7"
-                onChange={e => setEditing({ ...editing, name: e.target.value })} />
-            </label>
-            <label className="block">
-              <span className="text-sm font-semibold">Questions (max {maxQ})</span>
-              <input className="input" type="number" min={1} max={maxQ} value={editing.question_count || maxQ}
-                onChange={e => setEditing({ ...editing, question_count: Math.max(1, Math.min(maxQ, Number(e.target.value) || 1)) })} />
-            </label>
-            <label className="block">
-              <span className="text-sm font-semibold">Options</span>
-              <input className="input" value={editing.options || ''} maxLength={5}
-                onChange={e => setEditing({ ...editing, options: e.target.value.toUpperCase().replace(/[^A-E]/g, '') })} />
-            </label>
-            <label className="block">
-              <span className="text-sm font-semibold">Marks: correct</span>
-              <input className="input" type="number" step="0.25" value={editing.marks_correct ?? 1}
-                onChange={e => setEditing({ ...editing, marks_correct: Number(e.target.value) })} />
-            </label>
-            <label className="block">
-              <span className="text-sm font-semibold">Marks: wrong</span>
-              <input className="input" type="number" step="0.25" value={editing.marks_incorrect ?? 0}
-                onChange={e => setEditing({ ...editing, marks_incorrect: Number(e.target.value) })} />
-            </label>
-            <label className="block">
-              <span className="text-sm font-semibold">Marks: blank</span>
-              <input className="input" type="number" step="0.25" value={editing.marks_unmarked ?? 0}
-                onChange={e => setEditing({ ...editing, marks_unmarked: Number(e.target.value) })} />
-            </label>
-          </div>
-
-          <div className="text-sm text-gray-600 mb-2">Click the correct option for each question. {filled} of {qn} set.</div>
-          <div className="grid gap-y-2 gap-x-6 grid-flow-col" style={{ gridTemplateRows: `repeat(${Math.ceil(qn / 5)}, minmax(0, 1fr))` }}>
-            {Array.from({ length: qn }, (_, i) => (
-              <AnswerInput key={i} index={i + 1} options={editing.options || 'ABCDE'}
-                answer={editing.answer_key?.[`q${i + 1}`] || ''} onOptionClick={setAnswer} />
-            ))}
-          </div>
-
-          <div className="flex gap-3 mt-6">
-            <button className="btn-primary" onClick={save} disabled={filled < qn}>
-              {filled < qn ? `Set all ${qn} answers to save` : (editing.id ? 'Save changes' : 'Save answer key')}
+    <div className="page flex flex-col gap-5">
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 id={TITLE_ID} tabIndex={-1} className="page-title">Answer keys</h1>
+          {!writingNew && (
+            <button id={NEW_BUTTON_ID} type="button" onClick={() => openEditor(NEW)} className="btn btn-primary">
+              <IconPlus />
+              New key
             </button>
-            <button className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button>
-          </div>
+          )}
         </div>
-      ) : (
-        <div className="bg-white border rounded-lg shadow overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-[#D8F1A038] text-left text-xs uppercase text-gray-700">
-              <tr><th className="p-3">Test</th><th className="p-3">Questions</th><th className="p-3">Marks (right / wrong / blank)</th><th className="p-3">Created</th><th className="p-3"></th></tr>
-            </thead>
-            <tbody>
-              {tests.length === 0 && <tr><td className="p-4 text-gray-500" colSpan={5}>No answer keys yet. Create one to start evaluating.</td></tr>}
-              {tests.map(t => (
-                <tr key={t.id} className="border-t hover:bg-gray-50">
-                  <td className="p-3 font-semibold">{t.name}</td>
-                  <td className="p-3">{t.question_count} × {t.options}</td>
-                  <td className="p-3">{t.marks_correct} / {t.marks_incorrect} / {t.marks_unmarked}</td>
-                  <td className="p-3 text-gray-600">{fmtDate(t.created_at)} by {t.created_by}</td>
-                  <td className="p-3 whitespace-nowrap">
-                    <button className="link" onClick={() => setEditing({ ...t })}>Edit</button>
-                    <span className="mx-2 text-gray-300">|</span>
-                    <button className="link" onClick={() => archive(t)}>Archive</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <p className="hint">The right answers for each test. You need one before you can check sheets.</p>
+      </div>
+
+      {loadError && (
+        <Notice tone="error">
+          <p className="m-0">{loadError}</p>
+          <button type="button" onClick={tryAgain} className="btn btn-secondary btn-small mt-3">
+            <IconRefresh size={20} />
+            Try again
+          </button>
+        </Notice>
+      )}
+
+      {(writingNew || hasKeys) && (
+        <ul className="m-0 flex list-none flex-col gap-5 p-0">
+          {writingNew && <li>{editorFor(null)}</li>}
+          {tests?.map(t => (
+            <li key={t.id}>
+              {openId === t.id
+                ? editorFor(t)
+                : <KeyCard test={t} meta={keyMeta(t, usageFor(t), me)} onOpen={() => openEditor(t.id)} />}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {tests === null && !loadError && <Loading label="Loading answer keys…" />}
+
+      {tests !== null && tests.length === 0 && !writingNew && (
+        <EmptyState title="No answer keys yet"
+          action={(
+            <button type="button" onClick={() => openEditor(NEW)} className="btn btn-primary">
+              <IconPlus />
+              New key
+            </button>
+          )}>
+          Make one to start checking sheets.
+        </EmptyState>
       )}
     </div>
   );

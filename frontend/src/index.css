@@ -2,16 +2,93 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer components {
-  .btn-primary { @apply inline-block rounded-md py-2 px-4 border-0 font-semibold bg-[#D8F1A0BB] hover:bg-[#D8F1A0] disabled:bg-gray-100 disabled:text-slate-400 disabled:cursor-not-allowed; }
-  .btn-secondary { @apply inline-block rounded-md py-2 px-4 border border-gray-300 font-semibold bg-white hover:bg-gray-50 disabled:text-slate-400 disabled:cursor-not-allowed; }
-  .input { @apply mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-green-600 focus:outline-none; }
-  .link { @apply text-green-800 underline hover:text-green-900; }
+/* Look and feel shared by every screen. Colours and fonts come from tailwind.config.js. */
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    @apply m-0 bg-ivory font-sans text-ink antialiased;
+    font-size: 17px;
+    /* A phone turned sideways with a camera notch or hole: keep the page clear of it. */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    line-height: 1.55;
+  }
+  h1, h2, h3 { @apply font-display text-heading; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  img { max-width: 100%; }
+  /* One clear focus ring for keyboard users, dark enough to see on white, ivory and coral. */
+  :focus { outline: none; }
+  :focus-visible { outline: 3px solid #4d2117; outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+    }
+  }
 }
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer components {
+  /* Page frame: wide on laptops with a small side margin, room for the bottom tabs on phones. */
+  .page { @apply mx-auto w-full max-w-page px-4 pb-28 pt-5 sm:px-6 md:pb-14 md:pt-7; }
+  .page-title { @apply m-0 break-words font-display text-[28px] font-semibold leading-9 text-heading md:text-[30px] md:leading-[38px]; }
+  .section-title { @apply m-0 font-display text-xl font-semibold leading-7 text-heading; }
+  .section-label { @apply m-0 font-sans text-sm font-semibold uppercase tracking-[0.6px] text-muted; }
+  .hint { @apply m-0 break-words text-[15px] leading-[22px] text-muted; }
+
+  .card { @apply rounded-[20px] border border-line bg-white p-5 md:p-6; }
+
+  /* Buttons: always at least 52 px tall, rounded, with a word on them. */
+  .btn {
+    @apply inline-flex min-h-[52px] cursor-pointer select-none items-center justify-center gap-2 rounded-full border-2 border-transparent px-6
+      text-[17px] font-semibold leading-tight no-underline transition-colors disabled:cursor-not-allowed;
+  }
+  .btn-primary { @apply bg-brand text-white hover:bg-brand-dark hover:text-white disabled:bg-line disabled:text-muted; }
+  .btn-secondary { @apply border-line bg-white text-brand hover:border-brand hover:text-brand-dark disabled:border-line disabled:text-muted; }
+  .btn-quiet { @apply border-transparent bg-transparent text-brand hover:bg-coral-wash hover:text-brand-dark; }
+  .btn-big { @apply min-h-[64px] px-8 text-xl; }
+  .btn-small { @apply min-h-[44px] px-4 text-[15px]; }
+  .btn-icon { @apply min-h-0 h-11 w-11 shrink-0 p-0; }
+  /* Dashed "add files" buttons in coral, as on the design. */
+  .btn-drop {
+    @apply inline-flex min-h-[72px] cursor-pointer items-center justify-center gap-2.5 rounded-2xl border-2 border-dashed border-coral-dark
+      bg-coral-wash px-5 text-[17px] font-semibold text-brand hover:bg-[#fbdcd3] disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .link { @apply font-semibold text-brand underline-offset-2 hover:text-brand-dark hover:underline; }
+
+  /* Form fields: big, with the label above. */
+  .field { @apply flex flex-col gap-1.5 text-base font-semibold text-ink; }
+  .field-note { @apply font-normal text-muted; }
+  .input {
+    @apply h-14 w-full rounded-[14px] border-2 border-line bg-white px-4 text-[17px] font-normal text-ink
+      placeholder:text-muted focus:border-coral-dark disabled:bg-ivory disabled:text-muted;
+  }
+  .select {
+    @apply input cursor-pointer appearance-none pr-14;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 24 24' fill='none' stroke='%239d4f39' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 18px center;
+  }
+  .select-small { @apply h-11 rounded-[10px] text-[15px]; }
+
+  /* Filter chips. aria-pressed marks the chosen one. */
+  .chip {
+    @apply inline-flex min-h-[44px] cursor-pointer items-center gap-2 rounded-full border-2 border-line bg-white px-4
+      text-[15px] font-semibold text-heading hover:border-heading;
+  }
+  .chip[aria-pressed="true"] { @apply border-heading bg-coral text-heading; }
+  .chip-sun { @apply bg-sun-wash text-sun-ink; }
+  .chip-danger { @apply text-danger; }
+
+  /* Status pills and stat tiles. */
+  .pill { @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[15px] font-semibold; }
+  .tone-fine { @apply bg-leaf-wash text-leaf-ink; }
+  .tone-check { @apply bg-sun-wash text-sun-ink; }
+  .tone-error { @apply border-2 border-danger bg-white text-danger; }
+  .tone-neutral { @apply bg-ivory text-muted; }
+
+  .skip-link {
+    @apply absolute left-3 top-3 z-50 -translate-y-24 rounded-full bg-heading px-5 py-3 font-semibold text-white focus:translate-y-0;
+  }
 }

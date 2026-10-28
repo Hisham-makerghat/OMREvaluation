@@ -33,7 +33,10 @@ async function* pdfPages(file: File): AsyncGenerator<PageImage> {
       const viewport = page.getViewport({ scale });
       const ctx = canvas.getContext('2d')!;
       ctx.filter = 'grayscale(1)';
-      await page.render({ canvasContext: ctx, viewport }).promise;
+      // "print" makes pdf.js draw the page in one go. The default ("display") waits for an animation
+      // frame between parts of the page, and browsers give no animation frames to a hidden tab, so
+      // checking stalled whenever a teacher switched to another tab or window.
+      await page.render({ canvasContext: ctx, viewport, intent: 'print' }).promise;
       yield { blob: await canvasToJpeg(canvas), sourceName: file.name, pageNo: i };
       page.cleanup();
     }

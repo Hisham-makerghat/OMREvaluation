@@ -13,8 +13,8 @@ FIXTURES = Path(__file__).parent / "fixtures"
 ANSWER_KEY = "ABCDBACEDCABDECBADCEBDACEABCDEDCBAEDACBECADBEACDBA"
 
 
-@pytest.fixture()
-def app(tmp_path):
+def make_app(tmp_path, **settings):
+    """An app with its database and sheet pictures in tmp_path. No built page unless STATIC_DIR is given."""
     from app import create_app
 
     cfg = SimpleNamespace(
@@ -29,9 +29,15 @@ def app(tmp_path):
         MAX_UPLOAD_BYTES=25 * 1024 * 1024,
         SECRET_KEY="test",
     )
+    vars(cfg).update(settings)
     application = create_app(cfg)
     application.config["TESTING"] = True
     return application
+
+
+@pytest.fixture()
+def app(tmp_path):
+    return make_app(tmp_path)
 
 
 @pytest.fixture()

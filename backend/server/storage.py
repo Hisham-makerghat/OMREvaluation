@@ -23,6 +23,10 @@ class LocalStorage:
     def get(self, key: str) -> bytes:
         return self._path(key).read_bytes()
 
+    def get_or_none(self, key: str):
+        p = self._path(key)
+        return p.read_bytes() if p.is_file() else None
+
     def delete_prefix(self, prefix: str) -> None:
         import shutil
         p = self._path(prefix)
@@ -46,6 +50,13 @@ class BlobStorage:
 
     def get(self, key: str) -> bytes:
         return self.container.download_blob(key).readall()
+
+    def get_or_none(self, key: str):
+        from azure.core.exceptions import ResourceNotFoundError
+        try:
+            return self.container.download_blob(key).readall()
+        except ResourceNotFoundError:
+            return None
 
     def delete_prefix(self, prefix: str) -> None:
         for blob in self.container.list_blobs(name_starts_with=prefix):

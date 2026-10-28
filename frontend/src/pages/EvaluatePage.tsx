@@ -1,150 +1,185 @@
+// "Check sheets" (/evaluate): choose the answer key, add the scans, check them, and follow the progress.
+// The chosen files and the checking itself live in components/evaluate/session.ts, so they carry on
+// when the teacher looks at another tab of the app and are still here when they come back.
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { api, Batch, Me, Sheet, Test } from '../lib/api';
-import { countPages, isSupported, pagesOf } from '../lib/pages';
+import { Link } from 'react-router-dom';
+import { reasonText, startChecking, withFullStop } from '../components/evaluate/checking';
+import ProgressCard from '../components/evaluate/ProgressCard';
+import ScansCard from '../components/evaluate/ScansCard';
+import { getSession, setBatchName, setTestId, sheetTotals, startOver, useSession } from '../components/evaluate/session';
+import { EmptyState, Loading, Notice } from '../components/ui';
+import { api, Me, Test } from '../lib/api';
+import { capitalise, plural } from '../lib/format';
 
-interface Progress { total: number; done: number; read: number; review: number; failed: number; current: string; }
-
-async function uploadWithRetry(batchId: string, form: FormData, tries = 3): Promise<Sheet[]> {
-  let lastErr: any;
-  for (let i = 0; i < tries; i++) {
-    try { return await api.upload<Sheet[]>(`/api/batches/${batchId}/sheets`, form); }
-    catch (e: any) {
-      lastErr = e;
-      if (e.status && e.status < 500 && e.status !== 408) throw e;   // a real rejection, not a dropped connection
-      await new Promise(r => setTimeout(r, 1500 * (i + 1)));
-    }
-  }
-  throw lastErr;
-}
+const scrollBehavior = (): ScrollBehavior =>
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 
 export default function EvaluatePage({ me }: { me: Me }) {
-  const [tests, setTests] = useState<Test[]>([]);
-  const [testId, setTestId] = useState('');
-  const [batchName, setBatchName] = useState('');
-  const [files, setFiles] = useState<File[]>([]);
-  const [progress, setProgress] = useState<Progress | null>(null);
-  const [msg, setMsg] = useState('');
-  const [batchId, setBatchId] = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
-  const folderRef = useRef<HTMLInputElement>(null);
-  const navigate = useNavigate();
+  const { testId, batchName, files, run, startError } = useSession();
+  const [tests, setTests] = useState<Test[] | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const progressRef = useRef<HTMLDivElement>(null);
+  const progressTitleRef = useRef<HTMLHeadingElement>(null);
+  const phase = run ? run.phase : null;
+  // The phase the screen last saw, to notice the moment checking finishes while it is open.
+  const lastPhase = useRef(phase);
 
+  // The answer keys, newest first. "cancelled" drops a reply that arrives after the screen has closed.
   useEffect(() => {
-    api.get<Test[]>('/api/tests').then(ts => { setTests(ts); setTestId(cur => cur || (ts[0]?.id ?? '')); }).catch(e => setMsg(e.message));
+    let cancelled = false;
+    setLoadError('');
+    api.get<Test[]>('/api/tests')
+      .then(list => {
+        if (cancelled) return;
+        setTests(list);
+        // Keep the key that is shown as the chosen one, so a key made later (by anyone) does not
+        // take its place when the teacher comes back to this screen.
+        const chosen = getSession().testId;
+        if (list.length > 0 && !list.some(t => t.id === chosen)) setTestId(list[0].id);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setLoadError(reasonText(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadAttempt]);
+
+  // A file dropped outside the Scans card would make the browser open it and leave the tool.
+  useEffect(() => {
+    const guard = (e: DragEvent) => {
+      if (e.defaultPrevented || !e.dataTransfer || Array.from(e.dataTransfer.types).indexOf('Files') === -1) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'none';
+    };
+    window.addEventListener('dragover', guard);
+    window.addEventListener('drop', guard);
+    return () => {
+      window.removeEventListener('dragover', guard);
+      window.removeEventListener('drop', guard);
+    };
   }, []);
 
-  const pick = (list: FileList | null) => {
-    const chosen = Array.from(list || []).filter(isSupported);
-    setFiles(chosen);
-    setMsg(chosen.length === 0 && list && list.length > 0 ? 'No PDF, JPG or PNG files in that selection.' : '');
+  // When checking finishes on this screen, its card moves to the top (see below). Take the teacher
+  // there, and give the card's title keyboard focus when the pressed button took focus away with it.
+  // Not when the screen opens on a finished check: coming back to this tab never moves focus.
+  useEffect(() => {
+    const before = lastPhase.current;
+    lastPhase.current = phase;
+    if (phase !== 'finished' || before === null || before === 'finished') return;
+    const active = document.activeElement;
+    if (!active || active === document.body) progressTitleRef.current?.focus({ preventScroll: true });
+    window.scrollTo({ top: 0, behavior: scrollBehavior() });
+  }, [phase]);
+
+  const test = tests ? tests.find(t => t.id === testId) || tests[0] || null : null;
+  const locked = run !== null; // the form belongs to the run until "Check more sheets"
+  const checking = phase === 'starting' || phase === 'checking';
+  const finished = phase === 'finished';
+  const { counting, sheets } = sheetTotals(files);
+  const noAnswers = test !== null && Object.keys(test.answer_key || {}).length === 0;
+  // While pages are being counted the button works (checking waits for the count). Once counted, at
+  // least one sheet must open: a list of files that cannot be opened has nothing to check.
+  const canStart = test !== null && !noAnswers && files.length > 0 && !locked && (counting || sheets > 0);
+
+  let buttonLabel = 'Check sheets';
+  if (checking) buttonLabel = 'Checking…';
+  else if (files.length > 0 && !counting && sheets > 0) buttonLabel = sheets === 1 ? 'Check 1 sheet' : `Check ${sheets} sheets`;
+
+  const start = () => {
+    if (!test || !canStart) return;
+    startChecking(test.id);
+    // On a phone the progress card starts below the screen: bring it into view.
+    window.requestAnimationFrame(() => progressRef.current?.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' }));
   };
 
-  const start = async () => {
-    setMsg('');
-    setProgress({ total: 0, done: 0, read: 0, review: 0, failed: 0, current: 'Counting pages…' });
-    let batch: Batch;
-    try {
-      batch = await api.post<Batch>('/api/batches', { test_id: testId, name: batchName });
-    } catch (e: any) { setMsg(e.message); setProgress(null); return; }
-    setBatchId(batch.id);
-    const total = await countPages(files);
-    const p: Progress = { total, done: 0, read: 0, review: 0, failed: 0, current: '' };
-    setProgress({ ...p });
-    try {
-      for await (const page of pagesOf(files)) {
-        p.current = `${page.sourceName}, page ${page.pageNo}`;
-        setProgress({ ...p });
-        const form = new FormData();
-        form.append('file', page.blob, `${page.sourceName.replace(/\.[^.]+$/, '')}-p${page.pageNo}.jpg`);
-        form.append('source_name', page.sourceName);
-        form.append('page_no', String(page.pageNo));
-        try {
-          const sheets = await uploadWithRetry(batch.id, form);
-          for (const s of sheets) {
-            if (s.status === 'ok') { p.read++; if (s.needs_review) p.review++; } else p.failed++;
-          }
-        } catch (e: any) {
-          p.failed++;
-          setMsg(`Could not upload ${p.current}: ${e.message}`);
-        }
-        p.done++;
-        setProgress({ ...p });
-      }
-    } finally {
-      await api.post(`/api/batches/${batch.id}/finish`).catch(() => undefined);
-      p.current = 'Done';
-      setProgress({ ...p });
-    }
+  const checkMore = () => {
+    startOver();
+    window.scrollTo({ top: 0, behavior: scrollBehavior() });
+    titleRef.current?.focus({ preventScroll: true });
   };
 
-  const pct = progress && progress.total ? Math.round(100 * progress.done / progress.total) : 0;
-  const running = progress !== null && progress.current !== 'Done';
+  let announcement = '';
+  if (run && run.phase === 'finished') {
+    announcement = `Finished. ${plural(run.done, 'sheet')} checked: ${run.fine} read fine, ${run.check} to check, ${run.bad} could not read.`;
+  } else if (run && run.problems.length > 0) {
+    // The first problem is said once, when it happens. The list in the card then grows quietly: read
+    // out again at every new problem, it would interrupt the teacher every few seconds.
+    announcement = `${run.problems[0]} Checking goes on.`;
+  }
+
+  // While checking, the card follows the big button, as on the design. Once finished it moves to the
+  // top, so a teacher coming back to this tab sees "See results" and "Check more sheets" first.
+  const progress = run && (
+    <div ref={progressRef} className="scroll-mb-28 md:scroll-mb-8">
+      <ProgressCard run={run} onCheckMore={checkMore} titleRef={progressTitleRef} />
+    </div>
+  );
 
   return (
-    <div className="text-left">
-      <h1 className="text-2xl font-bold mb-4">Evaluate scanned sheets</h1>
-      {msg && <div className="mb-4 p-3 rounded bg-red-100 text-red-800">{msg}</div>}
+    <div className="page flex flex-col gap-5">
+      <h1 ref={titleRef} tabIndex={-1} className="page-title">Check sheets</h1>
 
-      <div className="bg-white border rounded-lg shadow p-6 mb-6">
-        <div className="font-bold text-lg mb-3">Step 1: Choose the answer key</div>
-        {tests.length === 0 ? (
-          <p className="text-gray-600">No answer keys yet. <button className="link" onClick={() => navigate('/tests')}>Create one first.</button></p>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="block"><span className="text-sm font-semibold">Test</span>
-              <select className="input" value={testId} onChange={e => setTestId(e.target.value)} disabled={running}>
-                {tests.map(t => <option key={t.id} value={t.id}>{t.name} ({t.question_count} questions)</option>)}
-              </select></label>
-            <label className="block"><span className="text-sm font-semibold">Name for this batch (optional)</span>
-              <input className="input" placeholder="e.g. Class 7A, morning" value={batchName} onChange={e => setBatchName(e.target.value)} disabled={running} /></label>
-          </div>
-        )}
-      </div>
+      {finished && progress}
 
-      <div className="bg-white border rounded-lg shadow p-6 mb-6">
-        <div className="font-bold text-lg mb-1">Step 2: Choose the scans</div>
-        <p className="text-sm text-gray-600 mb-3">PDF, JPG or PNG. A PDF with many pages is fine: every page is read as one sheet. Files are shrunk in your browser before upload, so slow internet is not a problem.</p>
-        <div className="flex flex-wrap gap-3 items-center">
-          <button className="btn-secondary" onClick={() => fileRef.current?.click()} disabled={running}>Choose files</button>
-          <button className="btn-secondary" onClick={() => folderRef.current?.click()} disabled={running}>Choose a folder</button>
-          <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/*" className="hidden" onChange={e => pick(e.target.files)} />
-          <input ref={folderRef} type="file" className="hidden" {...({ webkitdirectory: 'true' } as any)} onChange={e => pick(e.target.files)} />
-          {files.length > 0 && <span className="text-sm">{files.length} file{files.length === 1 ? '' : 's'} selected</span>}
-          {files.length > 0 && !running && <button className="link" onClick={() => { setFiles([]); setProgress(null); }}>Clear</button>}
-        </div>
-        {files.length > 0 && (
-          <ul className="mt-3 text-xs text-gray-600 max-h-32 overflow-y-auto columns-2 md:columns-3">
-            {files.map(f => <li key={f.name + f.size}>{f.name}</li>)}
-          </ul>
-        )}
-        <div className="mt-5">
-          <button className="btn-primary" onClick={start} disabled={running || !testId || files.length === 0}>
-            {running ? 'Evaluating…' : 'Start evaluation'}
+      {!tests && loadError && (
+        <Notice tone="error" title="The answer keys could not be loaded">
+          <p className="m-0">{capitalise(withFullStop(loadError))}</p>
+          <button type="button" className="btn btn-secondary btn-small mt-3" onClick={() => setLoadAttempt(n => n + 1)}>
+            Try again
           </button>
-        </div>
-      </div>
-
-      {progress && (
-        <div className="bg-white border rounded-lg shadow p-6">
-          <div className="font-bold text-lg mb-3">Step 3: Progress</div>
-          <div className="w-full bg-gray-200 rounded-full h-5 overflow-hidden">
-            <div className="bg-[#D8F1A0] h-5 text-xs text-center leading-5 transition-all" style={{ width: `${pct}%` }}>{pct}%</div>
-          </div>
-          <div className="mt-2 text-sm text-gray-700">
-            {progress.done} of {progress.total} sheet{progress.total === 1 ? '' : 's'} done
-            {progress.current && progress.current !== 'Done' && <span className="text-gray-500"> · {progress.current}</span>}
-          </div>
-          <div className="mt-2 text-sm flex gap-4">
-            <span className="text-green-700">{progress.read} read</span>
-            <span className="text-amber-700">{progress.review} to review</span>
-            <span className="text-red-700">{progress.failed} failed</span>
-          </div>
-          {progress.current === 'Done' && batchId && (
-            <button className="btn-primary mt-4" onClick={() => navigate(`/batches/${batchId}`)}>View results</button>
-          )}
-        </div>
+        </Notice>
       )}
+      {!tests && !loadError && <Loading label="Loading answer keys…" />}
+      {tests && tests.length === 0 && (
+        <EmptyState title="First, make an answer key"
+          action={<Link to="/tests?new=1" className="btn btn-primary">Make an answer key</Link>}>
+          The tool needs the right answers before it can check sheets.
+        </EmptyState>
+      )}
+
+      {tests && test && (
+        <>
+          <div className="card grid grid-cols-1 gap-4 md:grid-cols-2">
+            <label className="field min-w-0">
+              Which test?
+              <select className="select" value={test.id} disabled={locked} onChange={e => setTestId(e.target.value)}>
+                {tests.map(t => (
+                  <option key={t.id} value={t.id}>{t.name} ({plural(t.question_count, 'question')})</option>
+                ))}
+              </select>
+            </label>
+            <label className="field min-w-0">
+              <span>Batch name <span className="field-note">(optional, e.g. school and class)</span></span>
+              <input className="input" type="text" value={batchName} maxLength={200} autoComplete="off"
+                placeholder="e.g. ZP Mahalpatane, Grade 7" disabled={locked} onChange={e => setBatchName(e.target.value)} />
+            </label>
+            {noAnswers && !locked && (
+              <Notice tone="warn" className="md:col-span-2">
+                This answer key has no answers yet. <Link to="/tests" className="link">Add the right answers</Link> before
+                checking sheets with it.
+              </Notice>
+            )}
+          </div>
+
+          <ScansCard files={files} locked={locked} finished={finished} />
+
+          {!finished && (
+            <button type="button" className="btn btn-primary btn-big w-full" disabled={!canStart} onClick={start}>
+              {buttonLabel}
+            </button>
+          )}
+        </>
+      )}
+
+      {startError && <Notice tone="error">{startError}</Notice>}
+
+      {checking && progress}
+
+      {/* Said once by screen readers at the first problem, and once when checking finishes. */}
+      <p className="sr-only" aria-live="polite">{announcement}</p>
     </div>
   );
 }

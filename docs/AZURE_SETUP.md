@@ -77,6 +77,33 @@ For the pilot you can use the free tier instead:
 `az sql db create ... --edition GeneralPurpose --family Gen5 --capacity 2 --compute-model Serverless --use-free-limit true --free-limit-exhaustion-behavior BillOverUsage`.
 The app already retries while a paused database wakes up.
 
+### Names in Marathi, Hindi and other scripts
+
+The app keeps names (of teachers, answer keys, batches and scanned files) as `NVARCHAR`, which
+holds every script. It sets this up when it creates its tables on first start. A database made by
+an earlier version has `VARCHAR` in those four columns instead. With the default collation,
+`SQL_Latin1_General_CP1_CI_AS`, that keeps only Western European letters and saves Marathi or
+Hindi as `?`. With a UTF-8 collation (its name ends in `_UTF8`) it keeps them, but counts bytes,
+three for each Marathi or Hindi letter, so a long name cannot be saved. The app never changes
+tables that already exist, so check once in the **Query editor**, signed in as the admin as above:
+
+```sql
+SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+WHERE TABLE_NAME IN ('users', 'tests', 'batches', 'sheets') AND COLUMN_NAME IN ('name', 'source_name');
+```
+
+If any of the four rows says `varchar`, run this once:
+
+```sql
+ALTER TABLE users   ALTER COLUMN name        NVARCHAR(200) NOT NULL;
+ALTER TABLE tests   ALTER COLUMN name        NVARCHAR(200) NOT NULL;
+ALTER TABLE batches ALTER COLUMN name        NVARCHAR(200) NOT NULL;
+ALTER TABLE sheets  ALTER COLUMN source_name NVARCHAR(300) NOT NULL;
+```
+
+It takes a few seconds, and the app can keep running. Names that were already saved as `?` cannot
+be recovered; an answer key can be given its name again on **Answer keys**.
+
 ## 4. Storage for scanned sheets
 
 ```bash

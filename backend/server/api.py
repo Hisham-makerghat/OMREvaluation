@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import re
 from datetime import datetime, timezone
 
 from flask import Blueprint, Response, abort, current_app, g, jsonify, request
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import selectinload
 from werkzeug.exceptions import HTTPException
 
 from omr import load_pages
@@ -155,10 +157,17 @@ def update_test(test_id):
 
 # ---- batches and sheets -----------------------------------------------------------
 
+# Batch.to_dict counts each batch's sheets and averages their scores. Load just those columns of the
+# sheets of every batch asked for, in one query (not one query per batch, and not the long text
+# columns), and their answer keys in one more.
+_BATCH_COUNTS = (selectinload(Batch.sheets).load_only(Sheet.status, Sheet.needs_review, Sheet.score),
+                 selectinload(Batch.test))
+
+
 @api.get("/batches")
 @require_user
 def list_batches():
-    q = db().query(Batch).order_by(Batch.created_at.desc())
+    q = db().query(Batch).options(*_BATCH_COUNTS).order_by(Batch.created_at.desc())
     if request.args.get("test_id"):
         q = q.filter(Batch.test_id == request.args["test_id"])
     return jsonify([b.to_dict() for b in q.limit(200).all()])
@@ -180,14 +189,14 @@ def create_batch():
 @api.get("/batches/<batch_id>")
 @require_user
 def get_batch(batch_id):
-    b = db().get(Batch, batch_id) or abort(404)
+    b = db().get(Batch, batch_id, options=_BATCH_COUNTS) or abort(404)
     return jsonify(b.to_dict())
 
 
 @api.post("/batches/<batch_id>/finish")
 @require_user
 def finish_batch(batch_id):
-    b = db().get(Batch, batch_id) or abort(404)
+    b = db().get(Batch, batch_id, options=_BATCH_COUNTS) or abort(404)
     b.status, b.finished_at = "finished", now()
     db().commit()
     return jsonify(b.to_dict())
@@ -225,16 +234,28 @@ def upload_sheet(batch_id):
         abort(400, str(exc))
 
     test = b.test
+    # The browser sends retry=1 when it sends a page again after a dropped connection or a busy
+    # server. The first try may have been saved anyway, with only its reply lost on the way, so a page
+    # that is already saved is answered with that sheet instead of being read and saved twice. A first
+    # try never looks: a tab still running an older version of the app can send two different photos
+    # that are both called image.jpg.
+    retry = request.form.get("retry") == "1"
     results = []
     for i, page in enumerate(pages):
         page_no = page_offset + i
+        if retry and (saved := _saved_sheet(b.id, source_name, page_no)):
+            results.append(saved)
+            continue
         r = engine().evaluate(page, test.answer_key, name=f"{b.id}-{page_no}",
                               marks_correct=test.marks_correct, marks_incorrect=test.marks_incorrect,
                               marks_unmarked=test.marks_unmarked)
+        # Reading takes a few seconds, and the first try may have been running all the while: look again.
+        if retry and (saved := _saved_sheet(b.id, source_name, page_no)):
+            results.append(saved)
+            continue
         sheet = Sheet(batch_id=b.id, source_name=source_name, page_no=page_no,
                       status="ok" if r.ok else "error", error_reason=r.error_reason,
                       score=r.score, needs_review=r.needs_review, review_reason=r.review_reason)
-        import json
         sheet.fields_json = json.dumps(r.fields)
         sheet.answers_json = json.dumps(r.answers)
         db().add(sheet)
@@ -252,9 +273,19 @@ def upload_sheet(batch_id):
         if r.checked_image_jpeg:
             sheet.checked_path = f"{prefix}/checked.jpg"
             storage().put(sheet.checked_path, r.checked_image_jpeg, "image/jpeg")
+            if r.layout:
+                storage().put(f"{prefix}/layout.json", json.dumps({"boxes": r.layout}).encode(), "application/json")
         results.append(sheet)
     db().commit()
     return jsonify([s.to_dict() for s in results]), 201
+
+
+def _saved_sheet(batch_id, source_name, page_no):
+    """The sheet this batch already has for this page of this file, if any."""
+    return (db().query(Sheet)
+            .filter(Sheet.batch_id == batch_id, Sheet.source_name == source_name, Sheet.page_no == page_no)
+            .order_by(Sheet.created_at)
+            .first())
 
 
 def _ext(filename):
@@ -280,9 +311,26 @@ def sheet_image(sheet_id):
     key = s.checked_path if request.args.get("kind", "checked") == "checked" else s.input_path
     if not key:
         abort(404)
-    data = storage().get(key)
+    data = storage().get_or_none(key)
+    if data is None:
+        # Storage deletes pictures after the time set in docs/AZURE_SETUP.md; the sheet's row stays.
+        abort(404, "this picture is no longer kept")
     mime = "application/pdf" if key.endswith(".pdf") else ("image/png" if key.endswith(".png") else "image/jpeg")
     return Response(data, mimetype=mime, headers={"Cache-Control": "private, max-age=3600"})
+
+
+@api.get("/sheets/<sheet_id>/layout")
+@require_user
+def sheet_layout(sheet_id):
+    """Where each question and field sits on the checked picture (fractions of its size), so the
+    page can draw a box around the questions a teacher should look at."""
+    s = db().get(Sheet, sheet_id) or abort(404)
+    if not s.checked_path:
+        abort(404, "this sheet has no checked picture")
+    data = storage().get_or_none(s.checked_path.rsplit("/", 1)[0] + "/layout.json")
+    if data is None:
+        abort(404, "this sheet was checked before question positions were recorded")
+    return Response(data, mimetype="application/json", headers={"Cache-Control": "private, max-age=3600"})
 
 
 @api.get("/batches/<batch_id>/results.csv")

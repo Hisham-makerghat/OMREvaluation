@@ -1,4 +1,9 @@
-"""Database tables. Images are not stored here, only their paths in storage."""
+"""Database tables. Images are not stored here, only their paths in storage.
+
+Names (of users, answer keys, batches and scanned files) are Unicode, which is NVARCHAR on SQL
+Server. Its VARCHAR saves Marathi or Hindi as "?" under the default collation, and under a UTF-8
+one counts bytes, three for each such letter, so long names do not fit. Tables made before that
+change need the ALTER TABLE lines in docs/AZURE_SETUP.md."""
 from __future__ import annotations
 
 import json
@@ -6,12 +11,20 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, Optional
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, create_engine, event
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, Unicode, create_engine, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, scoped_session, sessionmaker
 
 
 def now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def iso(dt: Optional[datetime]) -> Optional[str]:
+    """A time as ISO text with its UTC offset. SQLite hands times back without the offset;
+    they were stored as UTC, so say so, or browsers read them as local time."""
+    if dt is None:
+        return None
+    return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).isoformat()
 
 
 def new_id() -> str:
@@ -26,7 +39,7 @@ class User(Base):
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
-    name: Mapped[str] = mapped_column(String(200), default="")
+    name: Mapped[str] = mapped_column(Unicode(200), default="")
     role: Mapped[str] = mapped_column(String(20), default="teacher")        # teacher | admin
     status: Mapped[str] = mapped_column(String(20), default="pending")      # pending | approved | disabled
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
@@ -34,14 +47,14 @@ class User(Base):
 
     def to_dict(self) -> dict:
         return {"id": self.id, "email": self.email, "name": self.name, "role": self.role,
-                "status": self.status, "created_at": self.created_at.isoformat() if self.created_at else None,
+                "status": self.status, "created_at": iso(self.created_at),
                 "approved_by": self.approved_by}
 
 
 class Test(Base):
     __tablename__ = "tests"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
-    name: Mapped[str] = mapped_column(String(200))
+    name: Mapped[str] = mapped_column(Unicode(200))
     question_count: Mapped[int] = mapped_column(Integer, default=50)
     options: Mapped[str] = mapped_column(String(26), default="ABCDE")
     marks_correct: Mapped[float] = mapped_column(Float, default=1.0)
@@ -65,7 +78,7 @@ class Test(Base):
         return {"id": self.id, "name": self.name, "question_count": self.question_count, "options": self.options,
                 "marks_correct": self.marks_correct, "marks_incorrect": self.marks_incorrect,
                 "marks_unmarked": self.marks_unmarked, "answer_key": self.answer_key,
-                "created_by": self.created_by, "created_at": self.created_at.isoformat() if self.created_at else None,
+                "created_by": self.created_by, "created_at": iso(self.created_at),
                 "archived": self.archived}
 
 
@@ -73,7 +86,7 @@ class Batch(Base):
     __tablename__ = "batches"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     test_id: Mapped[str] = mapped_column(ForeignKey("tests.id"), index=True)
-    name: Mapped[str] = mapped_column(String(200), default="")
+    name: Mapped[str] = mapped_column(Unicode(200), default="")
     created_by: Mapped[str] = mapped_column(String(320))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -84,13 +97,16 @@ class Batch(Base):
     def to_dict(self, with_counts: bool = True) -> dict:
         d = {"id": self.id, "test_id": self.test_id, "test_name": self.test.name if self.test else None,
              "name": self.name, "created_by": self.created_by,
-             "created_at": self.created_at.isoformat() if self.created_at else None,
-             "finished_at": self.finished_at.isoformat() if self.finished_at else None, "status": self.status}
+             "created_at": iso(self.created_at),
+             "finished_at": iso(self.finished_at), "status": self.status}
         if with_counts:
             d["sheet_count"] = len(self.sheets)
             d["read_count"] = sum(1 for s in self.sheets if s.status == "ok")
             d["review_count"] = sum(1 for s in self.sheets if s.status == "ok" and s.needs_review)
             d["error_count"] = sum(1 for s in self.sheets if s.status == "error")
+            scores = [s.score for s in self.sheets if s.status == "ok" and s.score is not None]
+            d["average_score"] = round(sum(scores) / len(scores), 1) if scores else None
+            d["max_score"] = len(self.test.answer_key) * self.test.marks_correct if self.test else None
         return d
 
 
@@ -98,7 +114,7 @@ class Sheet(Base):
     __tablename__ = "sheets"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
     batch_id: Mapped[str] = mapped_column(ForeignKey("batches.id"), index=True)
-    source_name: Mapped[str] = mapped_column(String(300), default="")
+    source_name: Mapped[str] = mapped_column(Unicode(300), default="")
     page_no: Mapped[int] = mapped_column(Integer, default=1)
     input_path: Mapped[str] = mapped_column(String(300), default="")
     checked_path: Mapped[str] = mapped_column(String(300), default="")
@@ -125,7 +141,7 @@ class Sheet(Base):
                 "status": self.status, "error_reason": self.error_reason, "fields": self.fields,
                 "answers": self.answers, "score": self.score, "needs_review": self.needs_review,
                 "review_reason": self.review_reason, "has_checked_image": bool(self.checked_path),
-                "created_at": self.created_at.isoformat() if self.created_at else None}
+                "created_at": iso(self.created_at)}
 
 
 def make_session_factory(database_url: str):

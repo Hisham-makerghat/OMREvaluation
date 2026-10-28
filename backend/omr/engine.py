@@ -74,6 +74,9 @@ class SheetResult:
     review_reason: str = ""
     error_reason: str = ""
     checked_image_jpeg: Optional[bytes] = None
+    # Where each question and field sits on the checked picture, as fractions of its width and
+    # height: label -> [left, top, right, bottom]. Lets the web page box the ones to look at.
+    layout: Dict[str, List[float]] = field(default_factory=dict)
 
 
 def load_pages(data: bytes, filename: str) -> List[np.ndarray]:
@@ -175,6 +178,33 @@ class Engine:
                 pt.x = int(min(max(round(cx - box_w / 2), 0), page_w - box_w))
                 pt.y = int(min(max(round(cy - box_h / 2), 0), page_h - box_h))
 
+    def _layout(self) -> Dict[str, List[float]]:
+        """Box around every question and field as the bubbles are placed right now (call it after
+        _place_bubbles, inside the lock, so it describes this scan). Fractions of the page size,
+        which is also the size of the checked picture."""
+        page_w, page_h = self.template.page_dimensions
+        spans: Dict[str, List[float]] = {}
+
+        def grow(label: str, box: List[float]) -> None:
+            cur = spans.get(label)
+            spans[label] = list(box) if cur is None else [
+                min(cur[0], box[0]), min(cur[1], box[1]), max(cur[2], box[2]), max(cur[3], box[3])]
+
+        for block in self.template.field_blocks:
+            box_w, box_h = block.bubble_dimensions
+            for field_bubbles in block.traverse_bubbles:
+                for pt in field_bubbles:
+                    x0 = pt.x + block.shift
+                    grow(pt.field_label, [x0, pt.y, x0 + box_w, pt.y + box_h])
+        # A custom label such as Name covers all of its columns (name1 .. name30).
+        for label, parts in self.template.custom_labels.items():
+            for part in parts:
+                if part in spans:
+                    grow(label, spans[part])
+        wanted = set(self.question_labels) | set(self.field_labels)
+        return {label: [round(b[0] / page_w, 4), round(b[1] / page_h, 4), round(b[2] / page_w, 4), round(b[3] / page_h, 4)]
+                for label, b in spans.items() if label in wanted}
+
     def read(self, page: np.ndarray, name: str = "sheet") -> SheetResult:
         """Read one page image. Never raises for a bad sheet; returns ok=False instead."""
         with self._lock:
@@ -228,6 +258,7 @@ class Engine:
             ok=True, fields=fields, answers=answers,
             needs_review=bool(reasons), review_reason="; ".join(reasons),
             checked_image_jpeg=jpeg.tobytes() if ok else None,
+            layout=self._layout(),
         )
 
     def evaluate(self, page: np.ndarray, answer_key: Dict[str, str], name: str = "sheet",
