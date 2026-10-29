@@ -3,12 +3,12 @@
   "name": "MakerGhat OMR Tool",
   "icons": [
     {
-      "src": "logo192.png",
+      "src": "logo192.png?v=2",
       "type": "image/png",
       "sizes": "192x192"
     },
     {
-      "src": "logo512.png",
+      "src": "logo512.png?v=2",
       "type": "image/png",
       "sizes": "512x512"
     }
@@ -16,5 +16,5 @@
   "start_url": ".",
   "display": "standalone",
   "theme_color": "#faf4e8",
-  "background_color": "#faf4e8"
+  "background_color": "#ffffff"
 }

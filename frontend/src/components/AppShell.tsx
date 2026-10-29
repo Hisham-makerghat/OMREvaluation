@@ -1,14 +1,15 @@
 // The frame around every screen.
-// Laptop: one white bar with the app name at the left, the tabs in the middle and the signed-in
-// person at the right. Tablet: the same bar with only the logo and the round letter, so the tabs fit
-// on one row. Phone: the bar shows the page name, and the tabs move to the bottom.
+// Laptop: one white bar across the whole width, with the MakerGhat logo and the app name at the left
+// edge, the tabs in the middle and the signed-in person at the right edge (their name from 1280px).
+// Tablet: the same bar with only the logo and the round letter, so the tabs fit on one row. Phone:
+// the bar shows the logo and the page name, and the tabs move to the bottom.
 import classNames from 'classnames';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { User } from '../lib/api';
 import { displayName, initialOf } from '../lib/format';
 import { IconChart, IconChevronDown, IconKey, IconSignOut, IconUpload, IconUsers } from './Icons';
-import { Avatar } from './ui';
+import { Avatar, Logo } from './ui';
 
 export const SIGN_OUT_URL = '/.auth/logout?post_logout_redirect_uri=/';
 
@@ -57,11 +58,12 @@ function AccountMenu({ user }: { user: User }) {
     <div ref={wrap} className="relative order-2 shrink-0">
       <button ref={button} type="button" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(o => !o)}
         aria-label={`Account: ${name}`}
-        className="inline-flex min-h-[48px] items-center gap-2 rounded-full py-1 pl-1 pr-2 font-semibold text-brand hover:bg-coral-wash lg:pr-3">
+        className="inline-flex min-h-[48px] items-center gap-2 rounded-full py-1 pl-1 pr-2 font-semibold text-brand hover:bg-coral-wash xl:pr-3">
         <Avatar letter={initialOf(user)} className="h-10 w-10" />
-        {/* Name and arrow only from 1024px: on a tablet the tabs need the room to stay on one row. */}
-        <span className="hidden max-w-[160px] truncate text-[15px] lg:inline">{name}</span>
-        <IconChevronDown size={18} className="hidden lg:inline" />
+        {/* Name and arrow only from 1280px: below that the tabs need the room to stay on one row
+            beside the logo and the app name (at 1024px a long name pushed the last tab to a second row). */}
+        <span className="hidden max-w-[160px] truncate text-[15px] xl:inline">{name}</span>
+        <IconChevronDown size={18} className="hidden xl:inline" />
       </button>
       {open && (
         <div className="absolute right-0 top-full z-40 mt-2 w-[min(300px,calc(100vw-32px))] rounded-2xl border border-line bg-white p-2 shadow-lg">
@@ -93,17 +95,29 @@ export default function AppShell({ user, children }: { user: User; children: Rea
     <div className="flex min-h-screen flex-col">
       <a href="#main" className="skip-link">Skip to the page</a>
       <header className="border-b border-line bg-white">
-        <div className="mx-auto flex max-w-page items-center gap-4 px-4 py-2.5 sm:px-6 md:gap-6">
-          <Link to="/evaluate" className="flex shrink-0 items-center gap-2.5 no-underline" aria-label="OMR Tool home">
-            <img src={`${process.env.PUBLIC_URL}/MG_LOGO.png`} alt="" className="h-10 w-10" />
+        {/* No max width: on a wide screen the logo stays at the left edge and the person at the right. */}
+        <div className="flex items-center gap-4 px-4 py-2.5 sm:px-6 md:gap-6">
+          {/* The logo keeps its clear space (twice the height of its "a": 17.6px at 36px high, 19.5px at 40px,
+              21.5px at 44px) from what follows it: gap-6 to the divider, and on phones mr-1 / sm:mr-2 on top
+              of the row's 16px gap to the page name. */}
+          <Link to="/evaluate" className="mr-1 flex shrink-0 items-center gap-6 no-underline sm:mr-2 md:mr-0" aria-label="MakerGhat OMR Tool home">
+            {/* The MakerGhat logo from the design system, recoloured to the app's coral (hand) and heading
+                brown (words). 40px high on a phone and 44px from 640px, above the brand's 30px minimum.
+                Under 340px it is 36px, so the page name beside it ("Check sheets") still fits on a 320px
+                phone; below about 316px it is shortened with "…". */}
+            <Logo alt="" className="h-9 w-auto min-[340px]:h-10 sm:h-11" />
+            {/* forced-colors: a contrast theme repaints backgrounds in the page colour, which would hide the line. */}
+            <span aria-hidden="true" className="hidden h-8 w-px bg-line lg:block forced-colors:bg-[CanvasText]" />
             <span className="hidden font-display text-lg font-semibold text-heading lg:inline">OMR Tool</span>
           </Link>
           <span className="flex-1 truncate font-display text-lg font-semibold text-heading md:hidden">{title}</span>
+          {/* Narrower tabs below 1024px, so all four stay on one row beside the logo, also on a phone held
+              sideways whose notch takes 50px on each side (iPhone 12/13 mini). */}
           <nav aria-label="Main" className="order-1 hidden flex-1 flex-wrap justify-center gap-2 md:flex">
             {tabs.map(({ to, label, Icon }) => (
               <NavLink key={to} to={to}
                 className={({ isActive }) => classNames(
-                  'inline-flex h-12 items-center gap-2 rounded-full px-5 text-base font-semibold text-heading no-underline',
+                  'inline-flex h-12 items-center gap-2 rounded-full px-4 text-base font-semibold text-heading no-underline lg:px-5',
                   isActive ? 'bg-coral' : 'hover:bg-coral-wash')}>
                 <Icon />
                 {label}

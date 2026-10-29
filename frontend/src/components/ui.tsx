@@ -87,6 +87,21 @@ export function LiveCount({ text }: { text: string }) {
   return <p role="status" className="sr-only">{said}</p>;
 }
 
+/** The MakerGhat logo (coral hand, brown words). A dark Windows contrast theme paints the page dark but
+ *  leaves pictures alone, so the brown words would vanish: there the brand's reverse logo (white words,
+ *  same hand) is shown instead. The picture and its source make no box of their own (contents, hidden;
+ *  a shown source would be an empty flex item and add a gap), so the classes given here lay the logo
+ *  out as if it stood alone. */
+export function Logo({ alt, className }: { alt: string; className?: string }) {
+  return (
+    <picture className="contents">
+      <source className="hidden" srcSet={`${process.env.PUBLIC_URL}/makerghat-logo-reverse.svg`}
+        media="(forced-colors: active) and (prefers-color-scheme: dark)" />
+      <img src={`${process.env.PUBLIC_URL}/makerghat-logo.svg`} alt={alt} width={128} height={60} className={className} />
+    </picture>
+  );
+}
+
 /** Round letter avatar for a person. */
 export function Avatar({ letter, className }: { letter: string; className?: string }) {
   return (

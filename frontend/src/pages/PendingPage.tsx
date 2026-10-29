@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { SIGN_OUT_URL } from '../components/AppShell';
 import { IconClock, IconWarning } from '../components/Icons';
-import { Notice } from '../components/ui';
+import { Logo, Notice } from '../components/ui';
 import { Me, User } from '../lib/api';
 
 export default function PendingPage({ user, onCheckAgain }: { user: User; onCheckAgain: () => Promise<Me | null> }) {
@@ -21,7 +21,9 @@ export default function PendingPage({ user, onCheckAgain }: { user: User; onChec
   return (
     <main className="flex min-h-screen items-center justify-center bg-ivory p-4 sm:p-10">
       <div className="flex w-full max-w-[560px] flex-col gap-5 rounded-[20px] border border-line bg-white p-6 shadow-[0_4px_6px_-2px_rgba(0,0,0,0.1)] sm:p-9">
-        <img src={`${process.env.PUBLIC_URL}/MG_LOGO.png`} alt="MakerGhat" className="h-12 w-12" />
+        {/* self-start: in this column a picture would otherwise stretch to the card's width. mb-1: with the
+            card's 20px gap, the brand's clear space below the logo (twice the height of its "a", 23.4px). */}
+        <Logo alt="MakerGhat" className="mb-1 h-12 w-auto self-start" />
         <div className="flex items-center gap-3.5">
           <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${pending ? 'bg-sun-wash text-sun-ink' : 'bg-danger-wash text-danger'}`}>
             {pending ? <IconClock /> : <IconWarning />}

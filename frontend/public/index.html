@@ -2,11 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.png"/>
+    <!-- ?v=2 on the icons (here and in manifest.json): they changed in October 2026, and browsers keep an
+         icon by its address (Chrome for up to 7 days), so a new address makes them fetch the new one.
+         The server ignores the ?v=2. -->
+    <link rel="icon" href="%PUBLIC_URL%/favicon.png?v=2"/>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#faf4e8" />
     <meta name="description" content="MakerGhat OMR Tool: check scanned answer sheets and see each student's marks." />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png?v=2" />
     <!-- use-credentials: the site sits behind App Service sign-in, so the manifest fetch must
          carry the session cookie or it is redirected to the sign-in page (and blocked by CORS). -->
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" crossorigin="use-credentials" />
