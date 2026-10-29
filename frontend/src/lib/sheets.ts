@@ -92,7 +92,7 @@ export function checkSummary(problems: Problem[]): string {
 export function errorText(reason: string): string {
   const r = (reason || '').toLowerCase();
   if (r.includes('corner targets not found')) {
-    return 'The four black corner squares were not all found. Scan the sheet again, flat, with all four corners in the picture.';
+    return 'The four corner circles were not all found. Scan the sheet again, flat, with all four corners in the picture.';
   }
   if (r.includes('could not process image') || r.includes('could not read bubbles')) {
     return 'The sheet could not be read. Scan it again, flat and in good light.';

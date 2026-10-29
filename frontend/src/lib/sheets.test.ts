@@ -81,7 +81,7 @@ describe('problems a teacher should look at', () => {
 });
 
 test('why a sheet could not be read', () => {
-  expect(errorText('corner targets not found: check that all four corners are in the scan')).toMatch(/four black corner squares/);
+  expect(errorText('corner targets not found: check that all four corners are in the scan')).toMatch(/four corner circles/);
   expect(errorText('could not read bubbles: boom')).toMatch(/could not be read/);
   expect(errorText('')).toBe('The sheet could not be read.');
 });

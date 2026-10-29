@@ -202,7 +202,7 @@ export default function ScansCard({ files, locked, finished }: { files: ScanFile
         </>
       )}
 
-      <p className="hint md:hidden">Tip: lay each sheet flat, with all four black corner squares in the photo.</p>
+      <p className="hint md:hidden">Tip: lay each sheet flat, with all four corner circles in the photo.</p>
     </section>
   );
 }
