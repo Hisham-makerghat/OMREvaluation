@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import AppShell from './components/AppShell';
 import { reasonText, withFullStop } from './components/evaluate/checking';
+import PageSkeleton from './components/skeletons/PageSkeleton';
+import ShellSkeleton from './components/skeletons/ShellSkeleton';
 import { ToastProvider } from './components/Toast';
-import { Loading } from './components/ui';
+import { SkeletonScreen } from './components/ui';
 import { api, ApiError, Me } from './lib/api';
 import { capitalise } from './lib/format';
 import BatchPage from './pages/BatchPage';
@@ -50,7 +52,17 @@ function App() {
       </main>
     );
   }
-  if (!me) return <main className="flex min-h-screen items-center justify-center"><Loading label="Opening the OMR Tool…" /></main>;
+  if (!me) {
+    // Until the server says who is signed in: the frame (its real logo, shapes for the rest) around the
+    // page at this address.
+    return (
+      <SkeletonScreen label="Opening the OMR Tool…">
+        <ShellSkeleton>
+          <PageSkeleton path={window.location.pathname} />
+        </ShellSkeleton>
+      </SkeletonScreen>
+    );
+  }
   if (me.user.status !== 'approved') return <PendingPage user={me.user} onCheckAgain={load} />;
 
   return (

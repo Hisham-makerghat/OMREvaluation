@@ -13,7 +13,7 @@ import {
 } from 'react';
 import { Sheet, SheetLayout, sheetImageUrl } from '../../lib/api';
 import { IconExpand, IconExternal, IconMinus, IconPlus } from '../Icons';
-import { Loading } from '../ui';
+import { Skeleton, SkeletonScreen } from '../ui';
 
 export type PictureKind = 'checked' | 'input';
 type Box = [number, number, number, number];
@@ -23,6 +23,10 @@ const ZOOMS = [1, 1.5, 2, 3];
 const PAD = 0.6;
 /** The marked picture is always this size; giving it to the <img> keeps the page still while it loads. */
 const MARKED_SIZE = { width: 1500, height: 1700 };
+/** The original scan's size is only known once it starts to arrive. Most scans are A4 pages, so until
+ *  then its <img> takes that shape, and so does the loading shape over it; "auto" switches to the
+ *  scan's own shape as soon as the browser knows it. */
+const SCAN_SHAPE = 'aspect-[auto_210/297]';
 /** Laptop panel: the zoomed box is at least this tall (px) when the panel's middle has the room. */
 const MIN_BOX = 200;
 /** Laptop panel: px kept free under the zoomed box, for its frame's border. */
@@ -345,7 +349,7 @@ export default function SheetPicture({
             <img key={view} ref={imgRef} src={src} alt={alt} draggable={false} decoding="async"
               {...(view === 'checked' ? MARKED_SIZE : {})}
               onLoad={() => setResult({ src, ok: true })} onError={() => setResult({ src, ok: false })}
-              className={classNames('block h-auto w-full', status === 'failed' && 'hidden')} />
+              className={classNames('block h-auto w-full', view === 'input' && SCAN_SHAPE, status === 'failed' && 'hidden')} />
             {boxes && yellow.map(label => (
               <div key={label} aria-hidden="true" style={boxStyle(boxes[label])}
                 className="pointer-events-none absolute rounded-md border-[3px] border-sun-ink ring-4 ring-sun" />
@@ -356,10 +360,13 @@ export default function SheetPicture({
             )}
           </div>
         </div>
+        {/* The loading shape fills the frame, which already has the picture's shape (MARKED_SIZE,
+            SCAN_SHAPE), so nothing moves when the picture comes. Solid white under it, so a picture
+            drawn bit by bit as it arrives does not show through. */}
         {status === 'loading' && (
-          <div className="absolute inset-0 flex items-center justify-center bg-white/70">
-            <Loading label="Loading the picture…" />
-          </div>
+          <SkeletonScreen label="Loading the picture…" className="absolute inset-0 bg-white">
+            <Skeleton className="h-full w-full rounded-none" />
+          </SkeletonScreen>
         )}
         {status === 'failed' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-white p-5 text-center">

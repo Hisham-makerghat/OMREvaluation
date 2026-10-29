@@ -8,8 +8,9 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'reac
 import { IconChevronLeft, IconChevronRight, IconDownload, IconSearch, IconTrash } from '../components/Icons';
 import SheetViewer from '../components/SheetViewer';
 import { useSheetLayouts } from '../components/sheet/useSheetLayouts';
+import BatchSkeleton from '../components/skeletons/BatchSkeleton';
 import { useToast } from '../components/Toast';
-import { Chip, EmptyState, LiveCount, Loading, Notice } from '../components/ui';
+import { Chip, EmptyState, LiveCount, Notice } from '../components/ui';
 import { api, ApiError, Batch, Me, Sheet, Test } from '../lib/api';
 import { capitalise, fmtScore, friendlyDate, plural, whoDid } from '../lib/format';
 import {
@@ -300,7 +301,7 @@ function BatchResults({ id, me }: { id: string; me: Me }) {
     return (
       <div className="page flex flex-col gap-3.5">
         {backLink}
-        <Loading label="Loading the results…" />
+        <BatchSkeleton />
       </div>
     );
   }

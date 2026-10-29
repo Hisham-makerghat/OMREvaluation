@@ -6,7 +6,8 @@ import { IconPencil, IconPlus, IconRefresh } from '../components/Icons';
 import { problemFromError } from '../components/keys/answerKey';
 import KeyEditor, { LEAVE_MESSAGE } from '../components/keys/KeyEditor';
 import { KeyUse, Usage, usageFrom, usageOf, usedByText } from '../components/keys/usage';
-import { EmptyState, Loading, Notice } from '../components/ui';
+import TestsSkeleton from '../components/skeletons/TestsSkeleton';
+import { EmptyState, Notice } from '../components/ui';
 import { api, Batch, Me, Test } from '../lib/api';
 import { friendlyDate, plural, whoDid } from '../lib/format';
 
@@ -200,7 +201,7 @@ export default function TestsPage({ me }: { me: Me }) {
         </ul>
       )}
 
-      {tests === null && !loadError && <Loading label="Loading answer keys…" />}
+      {tests === null && !loadError && <TestsSkeleton />}
 
       {tests !== null && tests.length === 0 && !writingNew && (
         <EmptyState title="No answer keys yet"

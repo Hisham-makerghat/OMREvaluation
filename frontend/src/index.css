@@ -88,7 +88,27 @@
   .tone-error { @apply border-2 border-danger bg-white text-danger; }
   .tone-neutral { @apply bg-ivory text-muted; }
 
+  /* Loading shapes: warm blocks in the size of what is coming, with a light that sweeps across them.
+     Still for people whose device asks for less motion. A contrast theme removes background colours,
+     so there each shape gets an outline instead. */
+  .skeleton { @apply relative block overflow-hidden rounded-lg bg-line/60 forced-colors:border forced-colors:border-[GrayText]; }
+  /* Plain CSS: an animation put in with @apply inside ::after comes out with empty keyframes. */
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.7), transparent);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .skeleton::after { animation: shimmer 1.8s ease-in-out infinite; }
+  }
+
   .skip-link {
     @apply absolute left-3 top-3 z-50 -translate-y-24 rounded-full bg-heading px-5 py-3 font-semibold text-white focus:translate-y-0;
   }
+}
+
+@keyframes shimmer {
+  to { transform: translateX(100%); }
 }

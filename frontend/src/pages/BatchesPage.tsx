@@ -6,7 +6,8 @@
 import { Fragment, ReactNode, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { IconChevronRight, IconSearch, IconUpload } from '../components/Icons';
-import { Chip, EmptyState, LiveCount, Loading, Notice } from '../components/ui';
+import BatchesSkeleton from '../components/skeletons/BatchesSkeleton';
+import { Chip, EmptyState, LiveCount, Notice } from '../components/ui';
 import { api, ApiError, Batch, Me } from '../lib/api';
 import { capitalise, fmtScore, friendlyDate, isWithinDays, plural, whoDid } from '../lib/format';
 
@@ -205,7 +206,7 @@ export default function BatchesPage({ me }: { me: Me }) {
       </Notice>
     );
   } else if (batches === null) {
-    body = <Loading label="Loading results…" />;
+    body = <BatchesSkeleton />;
   } else if (batches.length === 0) {
     body = (
       <EmptyState title="Nothing checked yet"

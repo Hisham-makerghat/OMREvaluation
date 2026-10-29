@@ -1,6 +1,6 @@
 // Small building blocks shared by the screens.
 import classNames from 'classnames';
-import { ReactNode, useEffect, useState } from 'react';
+import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { IconCheck, IconClose, IconInfo, IconWarning } from './Icons';
 
 type Tone = 'info' | 'success' | 'warn' | 'error';
@@ -43,14 +43,28 @@ export function Notice({ tone = 'info', title, children, onClose, className, liv
   );
 }
 
-/** Turning circle with a word, for anything that takes a moment. */
-export function Loading({ label = 'Loading…', className }: { label?: string; className?: string }) {
+/** A loading shape in the size of something still on its way: a line of text, a field, a button or a
+ *  picture. Its size and corners come from className; screen readers skip it. */
+export function Skeleton({ className }: { className?: string }) {
+  return <span aria-hidden="true" className={classNames('skeleton', className)} />;
+}
+
+/** True inside a SkeletonScreen. */
+const InSkeletonScreen = createContext(false);
+
+/** Stands in for a screen, or part of one, while it loads: the shapes inside show where things will
+ *  be, and screen readers hear the label instead. Inside another one (a page's skeleton in the app's
+ *  opening screen) it is only a box: the outer label already says what is loading. */
+export function SkeletonScreen({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
+  const nested = useContext(InSkeletonScreen);
+  if (nested) return <div className={className}>{children}</div>;
   return (
-    <div role="status" className={classNames('flex items-center gap-3 py-10 text-muted', className)}>
-      {/* Turns only for people whose device does not ask for less motion; otherwise it stays still. */}
-      <span aria-hidden="true" className="h-6 w-6 rounded-full border-[3px] border-line border-t-brand motion-safe:animate-spin" />
-      <span>{label}</span>
-    </div>
+    <InSkeletonScreen.Provider value={true}>
+      <div role="status" className={className}>
+        <span className="sr-only">{label}</span>
+        {children}
+      </div>
+    </InSkeletonScreen.Provider>
   );
 }
 

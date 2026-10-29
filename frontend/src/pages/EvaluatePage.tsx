@@ -7,7 +7,8 @@ import { reasonText, startChecking, withFullStop } from '../components/evaluate/
 import ProgressCard from '../components/evaluate/ProgressCard';
 import ScansCard from '../components/evaluate/ScansCard';
 import { getSession, setBatchName, setTestId, sheetTotals, startOver, useSession } from '../components/evaluate/session';
-import { EmptyState, Loading, Notice } from '../components/ui';
+import EvaluateSkeleton from '../components/skeletons/EvaluateSkeleton';
+import { EmptyState, Notice } from '../components/ui';
 import { api, Me, Test } from '../lib/api';
 import { capitalise, plural } from '../lib/format';
 
@@ -132,7 +133,7 @@ export default function EvaluatePage({ me }: { me: Me }) {
           </button>
         </Notice>
       )}
-      {!tests && !loadError && <Loading label="Loading answer keys…" />}
+      {!tests && !loadError && <EvaluateSkeleton />}
       {tests && tests.length === 0 && (
         <EmptyState title="First, make an answer key"
           action={<Link to="/tests?new=1" className="btn btn-primary">Make an answer key</Link>}>

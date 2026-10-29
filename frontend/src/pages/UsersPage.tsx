@@ -3,8 +3,9 @@
 import classNames from 'classnames';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { IconRefresh } from '../components/Icons';
+import UsersSkeleton from '../components/skeletons/UsersSkeleton';
 import { useToast } from '../components/Toast';
-import { Loading, Notice } from '../components/ui';
+import { Notice } from '../components/ui';
 import { api, ApiError, Me, User } from '../lib/api';
 import { capitalise, displayName, friendlyDate } from '../lib/format';
 
@@ -186,7 +187,7 @@ export default function UsersPage({ me }: { me: Me }) {
       ))}
 
       {!users ? (
-        !loadError && <Loading label="Loading people…" />
+        !loadError && <UsersSkeleton />
       ) : (
         <>
           <h2 id={WAITING_ID} tabIndex={-1} className={classNames('section-label mt-2', pending.length > 0 && 'text-sun-ink')}>
