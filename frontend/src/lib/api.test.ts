@@ -52,6 +52,19 @@ test('a redirect to the sign-in page is a 401, not a lost connection', async () 
   expect(redirected.text).not.toHaveBeenCalled();
 });
 
+test("App Service's empty 403 for an expired sign-in is a 401; the app's own 403 keeps its words", async () => {
+  fetchMock.mockResolvedValue(reply(403, ''));
+  const expired = await api.get('/api/me').catch((e: unknown) => e);
+  expect(expired).toBeInstanceOf(ApiError);
+  expect((expired as ApiError).status).toBe(401);
+  expect((expired as ApiError).message).toBe('you are signed out');
+
+  fetchMock.mockResolvedValue(reply(403, '{"error":"your account is disabled"}'));
+  const disabled = await api.get('/api/batches').catch((e: unknown) => e);
+  expect((disabled as ApiError).status).toBe(403);
+  expect((disabled as ApiError).message).toBe('your account is disabled');
+});
+
 test("an error reply carries the server's words, or only its code when it is not the app's JSON", async () => {
   fetchMock.mockResolvedValue(reply(404, '{"error":"batch not found"}'));
   const notFound = await api.get('/api/batches/x').catch((e: unknown) => e);

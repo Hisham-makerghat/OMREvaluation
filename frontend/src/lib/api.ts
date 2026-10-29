@@ -9,8 +9,9 @@ export class ApiError extends Error {
 
 // Once the sign-in runs out (App Service ends it after 8 hours), App Service answers with a redirect to
 // the Microsoft sign-in page. fetch would follow it to another site and fail as if the connection were
-// lost. Marked as AJAX, App Service answers 401 instead; redirect: 'manual' turns a redirect that still
-// comes into a 401 as well, so every screen says "You have been signed out".
+// lost. Marked as AJAX, App Service answers with an empty 401 or 403 instead (the live app gives 403);
+// redirect: 'manual' turns a redirect that still comes into a 401 as well. Either way every screen says
+// "You have been signed out".
 const AJAX = { 'X-Requested-With': 'XMLHttpRequest' };
 const SEND_JSON = { ...AJAX, 'Content-Type': 'application/json' };
 const BASE: RequestInit = { credentials: 'same-origin', redirect: 'manual' };
@@ -22,6 +23,8 @@ async function handle<T>(res: Response): Promise<T> {
   let body: any = null;
   try { body = text ? JSON.parse(text) : null; } catch { body = null; }
   if (!res.ok) {
+    // The app's own 401 and 403 always say why in JSON. Without that, App Service sent it: signed out.
+    if ((res.status === 401 || res.status === 403) && !(body && body.error)) throw new ApiError(401, 'you are signed out');
     const msg = (body && body.error) || res.statusText || `request failed (${res.status})`;
     throw new ApiError(res.status, msg);
   }
